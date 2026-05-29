@@ -13,7 +13,6 @@ export default function Navbar() {
 
   const links = [
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/tasks/new', label: 'New Task' },
     { href: '/profile', label: 'Profile' },
   ];
 

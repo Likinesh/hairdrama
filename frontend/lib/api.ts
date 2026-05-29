@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { getSession } from 'next-auth/react';
 import type {
   Task,
   CreateTaskPayload,
@@ -13,14 +12,24 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
 const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
 apiClient.interceptors.request.use(async (config) => {
-  const session = await getSession();
-  const appSession = session as (typeof session & { appToken?: string }) | null;
-  const token = appSession?.appToken;
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
+  if (typeof window !== 'undefined') {
+    const hasCookie = document.cookie.split('; ').some((row) => row.startsWith('auth_token='));
+    if (!hasCookie) {
+      try {
+        const { getSession } = await import('next-auth/react');
+        const session = await getSession();
+        const appSession = session as (typeof session & { appToken?: string }) | null;
+        if (appSession?.appToken) {
+          document.cookie = `auth_token=${appSession.appToken}; path=/; max-age=604800; SameSite=Lax`;
+        }
+      } catch (err) {
+        console.error('Failed to sync cookie in interceptor:', err);
+      }
+    }
   }
   return config;
 });

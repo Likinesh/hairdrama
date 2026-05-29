@@ -16,6 +16,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/');
@@ -23,8 +24,13 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return;
+    setError('');
     getTasks('all')
       .then(setTasks)
+      .catch(() => {
+        setTasks([]);
+        setError('Failed to load profile tasks. Please try again.');
+      })
       .finally(() => setLoading(false));
   }, [status]);
 
@@ -117,6 +123,10 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
+        )}
+
+        {error && (
+          <p className="text-sm text-rose-400 mt-5">{error}</p>
         )}
       </main>
     </>
