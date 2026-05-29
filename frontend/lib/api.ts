@@ -17,18 +17,27 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(async (config) => {
   if (typeof window !== 'undefined') {
-    const hasCookie = document.cookie.split('; ').some((row) => row.startsWith('auth_token='));
-    if (!hasCookie) {
+    let token = document.cookie
+      .split('; ')
+      .find((row) => row.startsWith('auth_token='))
+      ?.split('=')[1];
+
+    if (!token) {
       try {
         const { getSession } = await import('next-auth/react');
         const session = await getSession();
         const appSession = session as (typeof session & { appToken?: string }) | null;
         if (appSession?.appToken) {
-          document.cookie = `auth_token=${appSession.appToken}; path=/; max-age=604800; SameSite=Lax`;
+          token = appSession.appToken;
+          document.cookie = `auth_token=${token}; path=/; max-age=604800; SameSite=Lax`;
         }
       } catch (err) {
         console.error('Failed to sync cookie in interceptor:', err);
       }
+    }
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
   }
   return config;
