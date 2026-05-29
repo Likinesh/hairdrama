@@ -7,10 +7,15 @@ load_dotenv()
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    frontend_url_env = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    # Support comma-separated origins and strip trailing slashes to prevent CORS mismatch issues
+    origins = [url.strip().rstrip("/") for url in frontend_url_env.split(",") if url.strip()]
+    if not origins:
+        origins = ["http://localhost:3000"]
+
     CORS(
         app,
-        origins=[frontend_url],
+        origins=origins,
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

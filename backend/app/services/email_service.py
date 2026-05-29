@@ -11,7 +11,7 @@ from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
 
-APP_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+APP_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
 
 def _build_service(access_token: str, refresh_token: str):
     """Build an authorised Gmail API service from stored OAuth tokens."""
