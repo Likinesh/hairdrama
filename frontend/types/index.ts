@@ -60,10 +60,24 @@ export interface GoogleProfile {
 export interface AppJWT extends JWT {
   appToken?: string;
   appUser?: { id: string };
+  // Google credentials stored for client-side sync
+  googleId?: string;
+  googleEmail?: string;
+  googleName?: string;
+  googleAvatar?: string;
+  googleAccessToken?: string;
+  googleRefreshToken?: string;
 }
 
 export interface AppSession extends Session {
   appToken?: string;
+  // Exposed to client for sync fallback
+  googleId?: string;
+  googleEmail?: string;
+  googleName?: string;
+  googleAvatar?: string;
+  googleAccessToken?: string;
+  googleRefreshToken?: string;
 }
 
 // Component Props & helpers

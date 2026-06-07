@@ -26,9 +26,18 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, account, profile }): Promise<JWT> {
       const appToken = token as AppJWT;
 
-      // On first sign-in, sync user with Flask backend and get app JWT
       if (account && profile) {
         const gProfile = profile as GoogleProfile;
+
+        // Store Google credentials in the JWT for client-side sync
+        appToken.googleId = account.providerAccountId;
+        appToken.googleEmail = gProfile.email ?? '';
+        appToken.googleName = gProfile.name ?? '';
+        appToken.googleAvatar = gProfile.picture ?? '';
+        appToken.googleAccessToken = account.access_token ?? '';
+        appToken.googleRefreshToken = account.refresh_token ?? '';
+
+        // Try server-side sync (may fail if backend is cold-starting)
         try {
           const res = await fetch(
             `${process.env.NEXT_PUBLIC_API_URL}/auth/sync`,
@@ -51,7 +60,7 @@ export const authOptions: NextAuthOptions = {
             appToken.appUser = data.user;
           }
         } catch (err) {
-          console.error('Failed to sync user with backend:', err);
+          console.error('Server-side sync failed (client will retry):', err);
         }
       }
       return appToken;
@@ -61,6 +70,15 @@ export const authOptions: NextAuthOptions = {
       const appToken = token as AppJWT;
       const appSession = session as AppSession;
       appSession.appToken = appToken.appToken;
+
+      // Expose Google credentials so client can retry sync if server-side failed
+      appSession.googleId = appToken.googleId;
+      appSession.googleEmail = appToken.googleEmail;
+      appSession.googleName = appToken.googleName;
+      appSession.googleAvatar = appToken.googleAvatar;
+      appSession.googleAccessToken = appToken.googleAccessToken;
+      appSession.googleRefreshToken = appToken.googleRefreshToken;
+
       if (appToken.appUser) {
         (appSession.user as AppSession['user'] & { id?: string }).id = appToken.appUser.id;
       }
