@@ -78,7 +78,7 @@ export default function TaskCard({ task }: TaskCardProps) {
               />
             ) : (
               <div
-                className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[0.6rem] font-bold"
+                className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold"
                 title={task.assignee.name}
               >
                 {task.assignee.name.charAt(0)}

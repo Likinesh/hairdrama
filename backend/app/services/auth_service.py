@@ -19,7 +19,6 @@ def _get_secret() -> str:
     return secret
 
 def sign_token(user_id: str, email: str, name: str, avatar_url: str) -> str:
-    """Create a signed JWT for the given user."""
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
@@ -32,11 +31,9 @@ def sign_token(user_id: str, email: str, name: str, avatar_url: str) -> str:
     return jwt.encode(payload, _get_secret(), algorithm=JWT_ALGORITHM)
 
 def verify_token(token: str) -> dict[str, Any]:
-    """Verify and decode a JWT. Raises jwt.InvalidTokenError on failure."""
     return jwt.decode(token, _get_secret(), algorithms=[JWT_ALGORITHM])
 
 def require_auth(f: Callable) -> Callable:
-    """Decorator that validates the auth_token cookie or Bearer JWT and stores claims in g.user."""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.cookies.get("auth_token")

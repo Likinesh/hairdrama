@@ -90,7 +90,7 @@ export default function DashboardPage() {
           {STATS.map((s) => (
             <Card key={s.label} className="flex-1 min-w-[120px] bg-card border-border">
               <CardContent className="pt-4 pb-4 flex flex-col gap-1">
-                <span className={`text-[1.6rem] font-extrabold ${s.color}`}>{s.count}</span>
+                <span className={`text-2xl font-bold ${s.color}`}>{s.count}</span>
                 <span className="text-xs text-muted-foreground font-medium">{s.label}</span>
               </CardContent>
             </Card>

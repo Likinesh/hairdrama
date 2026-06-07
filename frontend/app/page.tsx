@@ -35,11 +35,11 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen flex flex-col">
       <section className="flex-1 flex flex-col items-center justify-center px-6 py-20 text-center relative overflow-hidden">
-        <div className="w-[72px] h-[72px] rounded-[20px] bg-primary/10 text-primary flex items-center justify-center mb-7">
+        <div className="w-[72px] h-[72px] rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-7">
           <LayoutGrid className="w-8 h-8" />
         </div>
 
-        <h1 className="text-5xl font-extrabold tracking-tight leading-tight mb-5 max-w-[720px]">
+        <h1 className="text-4xl font-bold tracking-tight leading-tight mb-5 max-w-[720px]">
           <span className="text-primary">Hairdrama</span>{' '}
           Task Manager
         </h1>
@@ -67,7 +67,7 @@ export default function LandingPage() {
           Secure Google OAuth 2.0
         </p>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-18 mt-[72px] max-w-[800px] w-full">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-[72px] max-w-[800px] w-full">
           {FEATURES.map((f) => (
             <Card key={f.title} className="text-left bg-card border-border hover:border-border/80 hover:shadow-md transition-all">
               <CardContent className="pt-5">

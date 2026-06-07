@@ -10,15 +10,11 @@ def register_users_routes(app: Flask) -> None:
     @require_auth
     def list_users():
         """Return all registered users (id, name, email, avatar_url) for the assignee picker."""
-        try:
-            sb = get_supabase()
-            result = (
-                sb.table("users")
-                .select("id,name,email,avatar_url")
-                .order("name")
-                .execute()
-            )
-            return jsonify(result.data)
-        except Exception as exc:
-            logger.exception("Error listing users: %s", exc)
-            return jsonify({"error": "Failed to fetch users"}), 500
+        sb = get_supabase()
+        result = (
+            sb.table("users")
+            .select("id,name,email,avatar_url")
+            .order("name")
+            .execute()
+        )
+        return jsonify(result.data)

@@ -22,10 +22,5 @@ CREATE INDEX IF NOT EXISTS idx_tasks_priority
 CREATE INDEX IF NOT EXISTS idx_tasks_created_at
     ON tasks (created_at DESC);
 
--- Users looked up by google_id during OAuth sync
-CREATE INDEX IF NOT EXISTS idx_users_google_id
-    ON users (google_id);
-
--- Users looked up by email
-CREATE INDEX IF NOT EXISTS idx_users_email
-    ON users (email);
+-- NOTE: users.google_id and users.email already have UNIQUE constraints,
+-- which automatically create indexes in PostgreSQL. No extra indexes needed.

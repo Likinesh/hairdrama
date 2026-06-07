@@ -4,12 +4,14 @@ import { useState, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
-  closestCenter,
+  closestCorners,
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
+  type DragOverEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -27,6 +29,31 @@ const COLUMNS: Column[] = [
   { id: 'completed', label: 'Completed', accentColor: '#10b981' },
 ];
 
+function DroppableColumn({
+  col,
+  isOver,
+  children,
+}: {
+  col: Column;
+  isOver: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef } = useDroppable({ id: col.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      id={`kanban-column-${col.id}`}
+      className={cn(
+        'bg-card border border-border rounded-2xl p-4 min-h-[300px] flex flex-col gap-3 transition-colors',
+        isOver && 'border-primary bg-accent'
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function KanbanBoard({ tasks, onTasksChange }: KanbanBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumn, setOverColumn] = useState<TaskStatus | null>(null);
@@ -43,6 +70,24 @@ export default function KanbanBoard({ tasks, onTasksChange }: KanbanBoardProps) 
     if (task) setActiveTask(task);
   }, [tasks]);
 
+  const resolveColumnId = (overId: string | number): TaskStatus | null => {
+    // Check if we're directly over a column
+    const col = COLUMNS.find((c) => c.id === overId);
+    if (col) return col.id;
+    // Otherwise check if we're over a task card — use that task's column
+    const overTask = tasks.find((t) => t.id === overId);
+    return overTask?.status ?? null;
+  };
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { over } = event;
+    if (over) {
+      setOverColumn(resolveColumnId(over.id));
+    } else {
+      setOverColumn(null);
+    }
+  }, [tasks]);
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
@@ -53,15 +98,10 @@ export default function KanbanBoard({ tasks, onTasksChange }: KanbanBoardProps) 
     const draggedTask = tasks.find((t) => t.id === active.id);
     if (!draggedTask) return;
 
-    let targetStatus = over.id as TaskStatus;
-    if (!COLUMNS.find((c) => c.id === targetStatus)) {
-      const overTask = tasks.find((t) => t.id === over.id);
-      if (!overTask) return;
-      targetStatus = overTask.status;
-    }
+    const targetStatus = resolveColumnId(over.id);
+    if (!targetStatus || draggedTask.status === targetStatus) return;
 
-    if (draggedTask.status === targetStatus) return;
-
+    // Optimistic update
     const updated = tasks.map((t) =>
       t.id === draggedTask.id ? { ...t, status: targetStatus } : t
     );
@@ -77,28 +117,19 @@ export default function KanbanBoard({ tasks, onTasksChange }: KanbanBoardProps) 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={closestCorners}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragOver={(event) => {
-        const { over } = event;
-        if (over) {
-          const colId = COLUMNS.find((c) => c.id === over.id)?.id;
-          setOverColumn(colId ?? null);
-        }
-      }}
     >
       <div className="grid grid-cols-3 gap-5 items-start max-[900px]:grid-cols-1">
         {COLUMNS.map((col) => {
           const colTasks = getTasksByStatus(col.id);
           return (
-            <div
+            <DroppableColumn
               key={col.id}
-              id={`kanban-column-${col.id}`}
-              className={cn(
-                'bg-card border border-border rounded-2xl p-4 min-h-[300px] flex flex-col gap-3 transition-colors',
-                overColumn === col.id && 'border-primary bg-accent'
-              )}
+              col={col}
+              isOver={overColumn === col.id}
             >
               <div className="flex items-center justify-between pb-3 border-b border-border">
                 <div className="flex items-center gap-2">
@@ -131,7 +162,7 @@ export default function KanbanBoard({ tasks, onTasksChange }: KanbanBoardProps) 
                   ))
                 )}
               </SortableContext>
-            </div>
+            </DroppableColumn>
           );
         })}
       </div>

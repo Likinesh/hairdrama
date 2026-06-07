@@ -17,12 +17,12 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="sticky top-0 z-50 h-16 bg-background/85 backdrop-blur-lg border-b border-border">
+    <nav className="sticky top-0 z-50 h-16 bg-background border-b border-border">
       <div className="flex items-center justify-between h-full max-w-[1280px] mx-auto px-6">
         <Link
           href="/dashboard"
           aria-label="Hairdrama Task Manager home"
-          className="text-[1.1rem] font-extrabold tracking-tight text-primary"
+          className="text-lg font-bold tracking-tight text-primary"
         >
           Hairdrama
         </Link>

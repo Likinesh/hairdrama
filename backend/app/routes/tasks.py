@@ -1,6 +1,7 @@
 import logging
-from datetime import datetime, timezone
-from flask import Flask, request, jsonify, g
+import re
+import threading
+from flask import Flask, request, jsonify, g, abort
 from app.db import get_supabase
 from app.services.auth_service import require_auth
 from app.services.email_service import (
@@ -9,6 +10,16 @@ from app.services.email_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+
+def _validate_uuid(value: str) -> str:
+    if not _UUID_RE.match(value):
+        abort(400, f"Invalid UUID: {value}")
+    return value
+
 
 def _get_user_tokens(user_id: str) -> tuple[str, str]:
     sb = get_supabase()
@@ -33,6 +44,29 @@ def _get_user(user_id: str) -> dict | None:
         .execute()
     )
     return result.data
+
+
+def _send_assigned_email_async(task: dict, assignee: dict, creator: dict, user_id: str) -> None:
+    """Fire-and-forget email in a background thread."""
+    at, rt = _get_user_tokens(user_id)
+    if at:
+        threading.Thread(
+            target=send_task_assigned_email,
+            args=(task, assignee, creator, at, rt),
+            daemon=True,
+        ).start()
+
+
+def _send_completed_email_async(task: dict, creator: dict, assignee: dict, completed_at: str, user_id: str) -> None:
+    """Fire-and-forget email in a background thread."""
+    at, rt = _get_user_tokens(user_id)
+    if at:
+        threading.Thread(
+            target=send_task_completed_email,
+            args=(task, creator, assignee, completed_at, at, rt),
+            daemon=True,
+        ).start()
+
 
 def register_task_routes(app: Flask) -> None:
     @app.get("/api/tasks")
@@ -63,13 +97,8 @@ def register_task_routes(app: Flask) -> None:
             query = query.eq("status", status_filter)
 
         query = query.order("created_at", desc=True)
-
-        try:
-            result = query.execute()
-            return jsonify(result.data)
-        except Exception as exc:
-            logger.exception("Error listing tasks: %s", exc)
-            return jsonify({"error": "Failed to fetch tasks"}), 500
+        result = query.execute()
+        return jsonify(result.data)
 
     @app.post("/api/tasks")
     @require_auth
@@ -79,11 +108,11 @@ def register_task_routes(app: Flask) -> None:
         data = request.get_json(silent=True) or {}
 
         if not data.get("title"):
-            return jsonify({"error": "Title is required"}), 400
+            abort(400, "Title is required")
 
         priority = data.get("priority", "medium")
         if priority not in ("low", "medium", "high"):
-            return jsonify({"error": "Priority must be low, medium, or high"}), 400
+            abort(400, "Priority must be low, medium, or high")
 
         payload = {
             "title": data["title"].strip(),
@@ -94,184 +123,157 @@ def register_task_routes(app: Flask) -> None:
             "created_by": user_id,
             "assigned_to": data.get("assigned_to"),
         }
-        try:
-            sb = get_supabase()
-            result = sb.table("tasks").insert(payload).execute()
-            task = result.data[0]
 
-            if task.get("assigned_to") and task["assigned_to"] != user_id:
-                assignee = _get_user(task["assigned_to"])
-                creator = _get_user(user_id)
-                if assignee and creator:
-                    at, rt = _get_user_tokens(user_id)
-                    send_task_assigned_email(task, assignee, creator, at, rt)
+        sb = get_supabase()
+        result = sb.table("tasks").insert(payload).execute()
+        task = result.data[0]
 
-            return jsonify(task), 201
-        except Exception as exc:
-            logger.exception("Error creating task: %s", exc)
-            return jsonify({"error": "Failed to create task"}), 500
+        if task.get("assigned_to") and task["assigned_to"] != user_id:
+            assignee = _get_user(task["assigned_to"])
+            creator = _get_user(user_id)
+            if assignee and creator:
+                _send_assigned_email_async(task, assignee, creator, user_id)
+
+        return jsonify(task), 201
 
     @app.get("/api/tasks/<task_id>")
     @require_auth
     def get_task(task_id: str):
         """Fetch a single task with creator and assignee details."""
-        try:
-            sb = get_supabase()
-            result = (
-                sb.table("tasks")
-                .select(
-                    "*, creator:users!tasks_created_by_fkey(id,name,email,avatar_url), "
-                    "assignee:users!tasks_assigned_to_fkey(id,name,email,avatar_url)"
-                )
-                .eq("id", task_id)
-                .maybe_single()
-                .execute()
+        _validate_uuid(task_id)
+        sb = get_supabase()
+        result = (
+            sb.table("tasks")
+            .select(
+                "*, creator:users!tasks_created_by_fkey(id,name,email,avatar_url), "
+                "assignee:users!tasks_assigned_to_fkey(id,name,email,avatar_url)"
             )
-            if not result.data:
-                return jsonify({"error": "Task not found"}), 404
-            return jsonify(result.data)
-        except Exception as exc:
-            logger.exception("Error fetching task %s: %s", task_id, exc)
-            return jsonify({"error": "Failed to fetch task"}), 500
+            .eq("id", task_id)
+            .maybe_single()
+            .execute()
+        )
+        if not result.data:
+            abort(404, "Task not found")
+        return jsonify(result.data)
 
     @app.put("/api/tasks/<task_id>")
     @require_auth
     def update_task(task_id: str):
         """Full task update: creator only."""
+        _validate_uuid(task_id)
         user_id = g.user["sub"]
         data = request.get_json(silent=True) or {}
-        try:
-            sb = get_supabase()
-            existing = (
-                sb.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
-            )
-            if not existing.data:
-                return jsonify({"error": "Task not found"}), 404
-            if existing.data["created_by"] != user_id:
-                return jsonify({"error": "Only the task creator can edit this task"}), 403
 
-            old_assignee = existing.data.get("assigned_to")
-            allowed = ["title", "description", "priority", "due_date", "assigned_to", "status"]
-            update_payload = {k: v for k, v in data.items() if k in allowed}
-            update_payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        sb = get_supabase()
+        existing = (
+            sb.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
+        )
+        if not existing.data:
+            abort(404, "Task not found")
+        if existing.data["created_by"] != user_id:
+            abort(403, "Only the task creator can edit this task")
 
-            result = sb.table("tasks").update(update_payload).eq("id", task_id).execute()
-            task = result.data[0]
+        old_assignee = existing.data.get("assigned_to")
+        allowed = ["title", "description", "priority", "due_date", "assigned_to", "status"]
+        update_payload = {k: v for k, v in data.items() if k in allowed}
 
-            new_assignee_id = task.get("assigned_to")
-            if new_assignee_id and new_assignee_id != old_assignee and new_assignee_id != user_id:
-                assignee = _get_user(new_assignee_id)
-                creator = _get_user(user_id)
-                if assignee and creator:
-                    at, rt = _get_user_tokens(user_id)
-                    send_task_assigned_email(task, assignee, creator, at, rt)
+        result = sb.table("tasks").update(update_payload).eq("id", task_id).execute()
+        task = result.data[0]
 
-            return jsonify(task)
-        except Exception as exc:
-            logger.exception("Error updating task %s: %s", task_id, exc)
-            return jsonify({"error": "Failed to update task"}), 500
+        new_assignee_id = task.get("assigned_to")
+        if new_assignee_id and new_assignee_id != old_assignee and new_assignee_id != user_id:
+            assignee = _get_user(new_assignee_id)
+            creator = _get_user(user_id)
+            if assignee and creator:
+                _send_assigned_email_async(task, assignee, creator, user_id)
+
+        return jsonify(task)
 
     @app.delete("/api/tasks/<task_id>")
     @require_auth
     def delete_task(task_id: str):
         """Delete a task: creator only."""
+        _validate_uuid(task_id)
         user_id = g.user["sub"]
 
-        try:
-            sb = get_supabase()
-            existing = (
-                sb.table("tasks").select("created_by").eq("id", task_id).maybe_single().execute()
-            )
-            if not existing.data:
-                return jsonify({"error": "Task not found"}), 404
-            if existing.data["created_by"] != user_id:
-                return jsonify({"error": "Only the task creator can delete this task"}), 403
+        sb = get_supabase()
+        existing = (
+            sb.table("tasks").select("created_by").eq("id", task_id).maybe_single().execute()
+        )
+        if not existing.data:
+            abort(404, "Task not found")
+        if existing.data["created_by"] != user_id:
+            abort(403, "Only the task creator can delete this task")
 
-            sb.table("tasks").delete().eq("id", task_id).execute()
-            return jsonify({"message": "Task deleted successfully"})
-        except Exception as exc:
-            logger.exception("Error deleting task %s: %s", task_id, exc)
-            return jsonify({"error": "Failed to delete task"}), 500
-
+        sb.table("tasks").delete().eq("id", task_id).execute()
+        return jsonify({"message": "Task deleted successfully"})
 
     @app.patch("/api/tasks/<task_id>/status")
     @require_auth
     def update_status(task_id: str):
         """Change the status of a task. Triggers completed email if applicable."""
+        _validate_uuid(task_id)
         user_id = g.user["sub"]
         data = request.get_json(silent=True) or {}
         new_status = data.get("status")
 
         if new_status not in ("todo", "in_progress", "completed"):
-            return jsonify({"error": "status must be todo, in_progress, or completed"}), 400
+            abort(400, "status must be todo, in_progress, or completed")
 
-        try:
-            sb = get_supabase()
-            existing = (
-                sb.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
-            )
-            if not existing.data:
-                return jsonify({"error": "Task not found"}), 404
+        sb = get_supabase()
+        existing = (
+            sb.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
+        )
+        if not existing.data:
+            abort(404, "Task not found")
 
-            task_data = existing.data
-            if task_data["created_by"] != user_id and task_data.get("assigned_to") != user_id:
-                return jsonify({"error": "Only the creator or assignee can change status"}), 403
+        task_data = existing.data
+        if task_data["created_by"] != user_id and task_data.get("assigned_to") != user_id:
+            abort(403, "Only the creator or assignee can change status")
 
-            completed_at = datetime.now(timezone.utc).isoformat()
-            update_payload: dict = {
-                "status": new_status,
-                "updated_at": completed_at,
-            }
-            result = sb.table("tasks").update(update_payload).eq("id", task_id).execute()
-            task = result.data[0]
+        result = sb.table("tasks").update({"status": new_status}).eq("id", task_id).execute()
+        task = result.data[0]
 
-            if new_status == "completed" and task_data.get("assigned_to") == user_id:
-                creator_id = task_data["created_by"]
-                if creator_id != user_id:
-                    creator = _get_user(creator_id)
-                    assignee = _get_user(user_id)
-                    if creator and assignee:
-                        at, rt = _get_user_tokens(user_id)
-                        send_task_completed_email(task, creator, assignee, completed_at, at, rt)
+        if new_status == "completed" and task_data.get("assigned_to") == user_id:
+            creator_id = task_data["created_by"]
+            if creator_id != user_id:
+                creator = _get_user(creator_id)
+                assignee = _get_user(user_id)
+                if creator and assignee:
+                    _send_completed_email_async(
+                        task, creator, assignee, task.get("updated_at", ""), user_id
+                    )
 
-            return jsonify(task)
-        except Exception as exc:
-            logger.exception("Error updating status for task %s: %s", task_id, exc)
-            return jsonify({"error": "Failed to update task status"}), 500
+        return jsonify(task)
 
     @app.patch("/api/tasks/<task_id>/assign")
     @require_auth
     def assign_task(task_id: str):
         """Reassign a task: creator only. Pass assigned_to: null to unassign."""
+        _validate_uuid(task_id)
         user_id = g.user["sub"]
         data = request.get_json(silent=True) or {}
         new_assignee_id = data.get("assigned_to")
 
-        try:
-            sb = get_supabase()
-            existing = (
-                sb.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
-            )
-            if not existing.data:
-                return jsonify({"error": "Task not found"}), 404
-            if existing.data["created_by"] != user_id:
-                return jsonify({"error": "Only the task creator can reassign this task"}), 403
+        sb = get_supabase()
+        existing = (
+            sb.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
+        )
+        if not existing.data:
+            abort(404, "Task not found")
+        if existing.data["created_by"] != user_id:
+            abort(403, "Only the task creator can reassign this task")
 
-            old_assignee = existing.data.get("assigned_to")
-            result = sb.table("tasks").update({
-                "assigned_to": new_assignee_id,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", task_id).execute()
-            task = result.data[0]
+        old_assignee = existing.data.get("assigned_to")
+        result = sb.table("tasks").update({
+            "assigned_to": new_assignee_id,
+        }).eq("id", task_id).execute()
+        task = result.data[0]
 
-            if new_assignee_id and new_assignee_id != old_assignee and new_assignee_id != user_id:
-                assignee = _get_user(new_assignee_id)
-                creator = _get_user(user_id)
-                if assignee and creator:
-                    at, rt = _get_user_tokens(user_id)
-                    send_task_assigned_email(task, assignee, creator, at, rt)
+        if new_assignee_id and new_assignee_id != old_assignee and new_assignee_id != user_id:
+            assignee = _get_user(new_assignee_id)
+            creator = _get_user(user_id)
+            if assignee and creator:
+                _send_assigned_email_async(task, assignee, creator, user_id)
 
-            return jsonify(task)
-        except Exception as exc:
-            logger.exception("Error assigning task %s: %s", task_id, exc)
-            return jsonify({"error": "Failed to assign task"}), 500
+        return jsonify(task)

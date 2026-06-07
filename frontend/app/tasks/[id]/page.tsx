@@ -146,7 +146,7 @@ export default function TaskDetailPage() {
                     {task.creator.avatar_url ? (
                       <Image src={task.creator.avatar_url} alt={task.creator.name} width={22} height={22} className="rounded-full border border-border object-cover" />
                     ) : (
-                      <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[0.6rem] font-bold">{task.creator.name.charAt(0)}</div>
+                      <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">{task.creator.name.charAt(0)}</div>
                     )}
                     <span className="text-sm">{task.creator.name}</span>
                   </div>
@@ -158,7 +158,7 @@ export default function TaskDetailPage() {
                     {task.assignee.avatar_url ? (
                       <Image src={task.assignee.avatar_url} alt={task.assignee.name} width={22} height={22} className="rounded-full border border-border object-cover" />
                     ) : (
-                      <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[0.6rem] font-bold">{task.assignee.name.charAt(0)}</div>
+                      <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">{task.assignee.name.charAt(0)}</div>
                     )}
                     <span className="text-sm">{task.assignee.name}</span>
                   </div>
@@ -234,7 +234,7 @@ export default function TaskDetailPage() {
 function MetaItem({ label, value, children }: { label: string; value?: string; children?: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[0.7rem] text-muted-foreground font-semibold tracking-widest uppercase mb-1">
+      <div className="text-xs text-muted-foreground font-semibold tracking-widest uppercase mb-1">
         {label}
       </div>
       {value ? (
