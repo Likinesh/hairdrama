@@ -2,7 +2,6 @@ import os
 import logging
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from typing import Any, Callable
 
 import jwt
 from flask import request, jsonify, g
@@ -12,13 +11,13 @@ logger = logging.getLogger(__name__)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 7
 
-def _get_secret() -> str:
+def _get_secret():
     secret = os.environ.get("JWT_SECRET", "")
     if not secret:
         raise RuntimeError("JWT_SECRET environment variable is not set")
     return secret
 
-def sign_token(user_id: str, email: str, name: str, avatar_url: str) -> str:
+def sign_token(user_id, email, name, avatar_url):
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
@@ -30,10 +29,10 @@ def sign_token(user_id: str, email: str, name: str, avatar_url: str) -> str:
     }
     return jwt.encode(payload, _get_secret(), algorithm=JWT_ALGORITHM)
 
-def verify_token(token: str) -> dict[str, Any]:
+def verify_token(token):
     return jwt.decode(token, _get_secret(), algorithms=[JWT_ALGORITHM])
 
-def require_auth(f: Callable) -> Callable:
+def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.cookies.get("auth_token")

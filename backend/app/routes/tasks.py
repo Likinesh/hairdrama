@@ -1,7 +1,7 @@
 import logging
 import re
 import threading
-from flask import Flask, request, jsonify, g, abort
+from flask import request, jsonify, g, abort
 from app.db import get_supabase
 from app.services.auth_service import require_auth
 from app.services.email_service import (
@@ -15,13 +15,13 @@ _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
 
-def _validate_uuid(value: str) -> str:
+def _validate_uuid(value):
     if not _UUID_RE.match(value):
         abort(400, f"Invalid UUID: {value}")
     return value
 
 
-def _get_user_tokens(user_id: str) -> tuple[str, str]:
+def _get_user_tokens(user_id):
     sb = get_supabase()
     result = (
         sb.table("users")
@@ -34,7 +34,7 @@ def _get_user_tokens(user_id: str) -> tuple[str, str]:
         return "", ""
     return result.data.get("access_token", ""), result.data.get("refresh_token", "")
 
-def _get_user(user_id: str) -> dict | None:
+def _get_user(user_id):
     sb = get_supabase()
     result = (
         sb.table("users")
@@ -46,7 +46,7 @@ def _get_user(user_id: str) -> dict | None:
     return result.data
 
 
-def _send_assigned_email_async(task: dict, assignee: dict, creator: dict, user_id: str) -> None:
+def _send_assigned_email_async(task, assignee, creator, user_id):
     """Fire-and-forget email in a background thread."""
     at, rt = _get_user_tokens(user_id)
     if at:
@@ -57,9 +57,11 @@ def _send_assigned_email_async(task: dict, assignee: dict, creator: dict, user_i
             args=(task, assignee, creator, at, rt, user_id),
             daemon=True,
         ).start()
+    else:
+        logger.warning("Could not send assigned email for task %s: missing access token for user %s", task.get("id"), user_id)
 
 
-def _send_completed_email_async(task: dict, creator: dict, assignee: dict, completed_at: str, user_id: str) -> None:
+def _send_completed_email_async(task, creator, assignee, completed_at, user_id):
     """Fire-and-forget email in a background thread."""
     at, rt = _get_user_tokens(user_id)
     if at:
@@ -70,9 +72,11 @@ def _send_completed_email_async(task: dict, creator: dict, assignee: dict, compl
             args=(task, creator, assignee, completed_at, at, rt, user_id),
             daemon=True,
         ).start()
+    else:
+        logger.warning("Could not send completed email for task %s: missing access token for user %s", task.get("id"), user_id)
 
 
-def register_task_routes(app: Flask) -> None:
+def register_task_routes(app):
     @app.get("/api/tasks")
     @require_auth
     def list_tasks():
@@ -142,7 +146,7 @@ def register_task_routes(app: Flask) -> None:
 
     @app.get("/api/tasks/<task_id>")
     @require_auth
-    def get_task(task_id: str):
+    def get_task(task_id):
         """Fetch a single task with creator and assignee details."""
         _validate_uuid(task_id)
         sb = get_supabase()
@@ -162,7 +166,7 @@ def register_task_routes(app: Flask) -> None:
 
     @app.put("/api/tasks/<task_id>")
     @require_auth
-    def update_task(task_id: str):
+    def update_task(task_id):
         """Full task update: creator only."""
         _validate_uuid(task_id)
         user_id = g.user["sub"]
@@ -195,7 +199,7 @@ def register_task_routes(app: Flask) -> None:
 
     @app.delete("/api/tasks/<task_id>")
     @require_auth
-    def delete_task(task_id: str):
+    def delete_task(task_id):
         """Delete a task: creator only."""
         _validate_uuid(task_id)
         user_id = g.user["sub"]
@@ -214,7 +218,7 @@ def register_task_routes(app: Flask) -> None:
 
     @app.patch("/api/tasks/<task_id>/status")
     @require_auth
-    def update_status(task_id: str):
+    def update_status(task_id):
         """Change the status of a task. Triggers completed email if applicable."""
         _validate_uuid(task_id)
         user_id = g.user["sub"]
@@ -252,7 +256,7 @@ def register_task_routes(app: Flask) -> None:
 
     @app.patch("/api/tasks/<task_id>/assign")
     @require_auth
-    def assign_task(task_id: str):
+    def assign_task(task_id):
         """Reassign a task: creator only. Pass assigned_to: null to unassign."""
         _validate_uuid(task_id)
         user_id = g.user["sub"]

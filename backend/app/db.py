@@ -1,11 +1,11 @@
 import os
 import logging
-from supabase import create_client, Client
+from supabase import create_client
 
 _logger = logging.getLogger(__name__)
-_client: Client | None = None
+_client = None
 
-def get_supabase() -> Client:
+def get_supabase():
     global _client
     if _client is None:
         url = os.environ.get("SUPABASE_URL", "")

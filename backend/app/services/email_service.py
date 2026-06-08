@@ -4,7 +4,6 @@ import logging
 import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 APP_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
 
-def _update_email_status(task_id: str, status: str) -> None:
+def _update_email_status(task_id, status):
     """Update the email_notification_status column on a task."""
     try:
         from app.db import get_supabase
@@ -24,7 +23,7 @@ def _update_email_status(task_id: str, status: str) -> None:
     except Exception as exc:
         logger.warning("Failed to update email status for task %s: %s", task_id, exc)
 
-def _build_service(access_token: str, refresh_token: str) -> tuple:
+def _build_service(access_token, refresh_token):
     """Build an authorised Gmail API service from stored OAuth tokens.
 
     Returns (service, credentials) so the caller can check if the token was refreshed.
@@ -40,7 +39,7 @@ def _build_service(access_token: str, refresh_token: str) -> tuple:
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
     return service, creds
 
-def _persist_refreshed_token(creds: Credentials, original_token: str, user_id: str) -> None:
+def _persist_refreshed_token(creds, original_token, user_id):
     """If the access token was refreshed, save the new one back to the database."""
     if creds.token and creds.token != original_token:
         try:
@@ -51,7 +50,7 @@ def _persist_refreshed_token(creds: Credentials, original_token: str, user_id: s
         except Exception as exc:
             logger.warning("Failed to persist refreshed token: %s", exc)
 
-def _make_message(sender: str, to: str, subject: str, html_body: str) -> dict:
+def _make_message(sender, to, subject, html_body):
     """Encode an email as a base64url Gmail API message dict."""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -61,14 +60,14 @@ def _make_message(sender: str, to: str, subject: str, html_body: str) -> dict:
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     return {"raw": raw}
 
-def _send(service, message: dict) -> None:
+def _send(service, message):
     service.users().messages().send(userId="me", body=message).execute()
 
-def _esc(value: str) -> str:
+def _esc(value):
     """Escape user-supplied text for safe HTML insertion."""
     return html.escape(str(value), quote=True)
 
-def _task_assigned_html(task: dict[str, Any], assignee: dict, creator: dict) -> str:
+def _task_assigned_html(task, assignee, creator):
     task_url = f"{APP_URL}/tasks/{task['id']}"
     due = _esc(task.get("due_date") or "No due date")
     priority = _esc((task.get("priority") or "medium").capitalize())
@@ -97,7 +96,7 @@ def _task_assigned_html(task: dict[str, Any], assignee: dict, creator: dict) -> 
     </div>
     """
 
-def _task_completed_html(task: dict[str, Any], creator: dict, assignee: dict, completed_at: str) -> str:
+def _task_completed_html(task, creator, assignee, completed_at):
     task_url = f"{APP_URL}/tasks/{task['id']}"
     title = _esc(task["title"])
     creator_name = _esc(creator.get("name", "there"))
@@ -123,13 +122,13 @@ def _task_completed_html(task: dict[str, Any], creator: dict, assignee: dict, co
     """
 
 def send_task_assigned_email(
-    task: dict[str, Any],
-    assignee: dict,
-    creator: dict,
-    creator_access_token: str,
-    creator_refresh_token: str,
-    sender_user_id: str = "",
-) -> None:
+    task,
+    assignee,
+    creator,
+    creator_access_token,
+    creator_refresh_token,
+    sender_user_id="",
+):
     """Send 'task assigned' email to the assignee. Errors are logged, not raised."""
     task_id = task.get("id", "")
     try:
@@ -146,21 +145,21 @@ def send_task_assigned_email(
         if sender_user_id:
             _persist_refreshed_token(creds, creator_access_token, sender_user_id)
     except HttpError as exc:
-        logger.error("Gmail API error sending task-assigned email: %s", exc)
+        logger.exception("Gmail API error sending task-assigned email: %s", exc)
         _update_email_status(task_id, "failed")
     except Exception as exc:
-        logger.error("Unexpected error sending task-assigned email: %s", exc)
+        logger.exception("Unexpected error sending task-assigned email: %s", exc)
         _update_email_status(task_id, "failed")
 
 def send_task_completed_email(
-    task: dict[str, Any],
-    creator: dict,
-    assignee: dict,
-    completed_at: str,
-    assignee_access_token: str,
-    assignee_refresh_token: str,
-    sender_user_id: str = "",
-) -> None:
+    task,
+    creator,
+    assignee,
+    completed_at,
+    assignee_access_token,
+    assignee_refresh_token,
+    sender_user_id="",
+):
     """Send 'task completed' email to the creator. Errors are logged, not raised."""
     task_id = task.get("id", "")
     try:
@@ -177,8 +176,8 @@ def send_task_completed_email(
         if sender_user_id:
             _persist_refreshed_token(creds, assignee_access_token, sender_user_id)
     except HttpError as exc:
-        logger.error("Gmail API error sending task-completed email: %s", exc)
+        logger.exception("Gmail API error sending task-completed email: %s", exc)
         _update_email_status(task_id, "failed")
     except Exception as exc:
-        logger.error("Unexpected error sending task-completed email: %s", exc)
+        logger.exception("Unexpected error sending task-completed email: %s", exc)
         _update_email_status(task_id, "failed")

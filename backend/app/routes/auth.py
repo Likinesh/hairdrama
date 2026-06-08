@@ -1,11 +1,11 @@
 import logging
-from flask import Flask, request, jsonify, g
+from flask import request, jsonify, g
 from app.db import get_supabase
 from app.services.auth_service import sign_token, require_auth
 
 logger = logging.getLogger(__name__)
 
-def register_auth_routes(app: Flask) -> None:
+def register_auth_routes(app):
     @app.post("/auth/sync")
     def sync_user():
         """
@@ -55,7 +55,7 @@ def register_auth_routes(app: Flask) -> None:
 
         if existing_data:
             # Update tokens and profile
-            update_payload: dict = {
+            update_payload = {
                 "name": name,
                 "avatar_url": avatar_url,
                 "access_token": access_token,

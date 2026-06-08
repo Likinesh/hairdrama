@@ -8,7 +8,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-def create_app() -> Flask:
+def create_app():
     app = Flask(__name__)
     frontend_url_env = os.environ.get("FRONTEND_URL", "http://localhost:3000")
     # Support comma-separated origins and strip trailing slashes to prevent CORS mismatch issues

@@ -1,11 +1,11 @@
 import logging
-from flask import Flask, jsonify
+from flask import jsonify
 from app.db import get_supabase
 from app.services.auth_service import require_auth
 
 logger = logging.getLogger(__name__)
 
-def register_users_routes(app: Flask) -> None:
+def register_users_routes(app):
     @app.get("/api/users")
     @require_auth
     def list_users():
