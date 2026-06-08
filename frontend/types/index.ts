@@ -3,6 +3,7 @@ import type { Session } from 'next-auth';
 
 export type TaskStatus = 'todo' | 'in_progress' | 'completed';
 export type TaskPriority = 'low' | 'medium' | 'high';
+export type EmailNotificationStatus = 'not_required' | 'pending' | 'sent' | 'failed';
 
 export interface UserProfile {
   id: string;
@@ -22,6 +23,7 @@ export interface Task {
   assigned_to: string | null;
   created_at: string;
   updated_at: string;
+  email_notification_status: EmailNotificationStatus;
   creator?: UserProfile;
   assignee?: UserProfile | null;
 }

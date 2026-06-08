@@ -50,9 +50,11 @@ def _send_assigned_email_async(task: dict, assignee: dict, creator: dict, user_i
     """Fire-and-forget email in a background thread."""
     at, rt = _get_user_tokens(user_id)
     if at:
+        sb = get_supabase()
+        sb.table("tasks").update({"email_notification_status": "pending"}).eq("id", task["id"]).execute()
         threading.Thread(
             target=send_task_assigned_email,
-            args=(task, assignee, creator, at, rt),
+            args=(task, assignee, creator, at, rt, user_id),
             daemon=True,
         ).start()
 
@@ -61,9 +63,11 @@ def _send_completed_email_async(task: dict, creator: dict, assignee: dict, compl
     """Fire-and-forget email in a background thread."""
     at, rt = _get_user_tokens(user_id)
     if at:
+        sb = get_supabase()
+        sb.table("tasks").update({"email_notification_status": "pending"}).eq("id", task["id"]).execute()
         threading.Thread(
             target=send_task_completed_email,
-            args=(task, creator, assignee, completed_at, at, rt),
+            args=(task, creator, assignee, completed_at, at, rt, user_id),
             daemon=True,
         ).start()
 

@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 
 APP_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
 
+def _update_email_status(task_id: str, status: str) -> None:
+    """Update the email_notification_status column on a task."""
+    try:
+        from app.db import get_supabase
+        sb = get_supabase()
+        sb.table("tasks").update({"email_notification_status": status}).eq("id", task_id).execute()
+        logger.info("Email status for task %s set to '%s'", task_id, status)
+    except Exception as exc:
+        logger.warning("Failed to update email status for task %s: %s", task_id, exc)
+
 def _build_service(access_token: str, refresh_token: str) -> tuple:
     """Build an authorised Gmail API service from stored OAuth tokens.
 
@@ -121,6 +131,7 @@ def send_task_assigned_email(
     sender_user_id: str = "",
 ) -> None:
     """Send 'task assigned' email to the assignee. Errors are logged, not raised."""
+    task_id = task.get("id", "")
     try:
         service, creds = _build_service(creator_access_token, creator_refresh_token)
         msg = _make_message(
@@ -131,12 +142,15 @@ def send_task_assigned_email(
         )
         _send(service, msg)
         logger.info("Task-assigned email sent to %s", assignee["email"])
+        _update_email_status(task_id, "sent")
         if sender_user_id:
             _persist_refreshed_token(creds, creator_access_token, sender_user_id)
     except HttpError as exc:
         logger.error("Gmail API error sending task-assigned email: %s", exc)
+        _update_email_status(task_id, "failed")
     except Exception as exc:
         logger.error("Unexpected error sending task-assigned email: %s", exc)
+        _update_email_status(task_id, "failed")
 
 def send_task_completed_email(
     task: dict[str, Any],
@@ -148,6 +162,7 @@ def send_task_completed_email(
     sender_user_id: str = "",
 ) -> None:
     """Send 'task completed' email to the creator. Errors are logged, not raised."""
+    task_id = task.get("id", "")
     try:
         service, creds = _build_service(assignee_access_token, assignee_refresh_token)
         msg = _make_message(
@@ -158,9 +173,12 @@ def send_task_completed_email(
         )
         _send(service, msg)
         logger.info("Task-completed email sent to %s", creator["email"])
+        _update_email_status(task_id, "sent")
         if sender_user_id:
             _persist_refreshed_token(creds, assignee_access_token, sender_user_id)
     except HttpError as exc:
         logger.error("Gmail API error sending task-completed email: %s", exc)
+        _update_email_status(task_id, "failed")
     except Exception as exc:
         logger.error("Unexpected error sending task-completed email: %s", exc)
+        _update_email_status(task_id, "failed")
